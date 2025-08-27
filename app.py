@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
 import random
-import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Sudokus para Rocio", layout="centered")
 st.title("🧩 Sudokus para Rocio")
@@ -35,62 +34,51 @@ if st.button("🎲 Generar uno nuevo"):
 board = st.session_state.board
 
 # ========================
-# Función para renderizar tablero con HTML + CSS
+# Crear inputs del usuario
 # ========================
-def render_sudoku_html(board):
-    style = """
-    <style>
-    table.sudoku {
-        border-collapse: collapse;
-        margin: auto;
-    }
-    table.sudoku td {
-        width: 40px; 
-        height: 40px; 
-        text-align: center; 
-        font-size: 20px; 
-        border: 1px solid #999;
-    }
-    /* Bordes gruesos para 3x3 */
-    table.sudoku td:nth-child(3), table.sudoku td:nth-child(6) {
-        border-right: 3px solid black;
-    }
-    table.sudoku tr:nth-child(3) td, table.sudoku tr:nth-child(6) td {
-        border-bottom: 3px solid black;
-    }
-    .fixed {
-        background-color: #ddd;
-        font-weight: bold;
-    }
-    input.sudoku-cell {
-        width: 100%;
-        height: 100%;
-        text-align: center;
-        border: none;
-        font-size: 20px;
-    }
-    input.sudoku-cell:focus {
-        outline: 2px solid #4a90e2;
-        background-color: #e8f0fe;
-    }
-    </style>
-    """
+st.write("Completa el Sudoku 👇")
+user_board = np.zeros((9,9), dtype=int)
 
-    table = "<table class='sudoku'>"
-    for i in range(9):
-        table += "<tr>"
-        for j in range(9):
-            val = board[i,j]
-            if val != 0:
-                table += f"<td class='fixed'>{val}</td>"
-            else:
-                table += f"<td><input class='sudoku-cell' maxlength='1'></td>"
-        table += "</tr>"
-    table += "</table>"
-    return style + table
+for i in range(9):
+    cols = st.columns(9)
+    for j in range(9):
+        val = board[i,j]
+        # Definir estilo de bordes
+        top = 3 if i%3==0 else 1
+        bottom = 3 if i==8 else 0
+        left = 3 if j%3==0 else 1
+        right = 3 if j==8 else 0
+        style = f"border-top:{top}px solid black; border-bottom:{bottom}px solid black; border-left:{left}px solid black; border-right:{right}px solid black; width:50px; height:50px; text-align:center; font-size:20px;"
+
+        if val != 0:
+            cols[j].markdown(f"<div style='background-color:#ddd; {style}'>{val}</div>", unsafe_allow_html=True)
+            user_board[i,j] = val
+        else:
+            num = cols[j].text_input("", value="", max_chars=1, key=f"user-{i}-{j}", help="Ingresa un número del 1 al 9")
+            user_board[i,j] = int(num) if num.isdigit() else 0
 
 # ========================
-# Mostrar el tablero
+# Función para verificar solución
 # ========================
-components.html(render_sudoku_html(board), height=420)
-st.write("💡 Casillas grises son fijas, blancas son para completar. Verifica tu solución manualmente o luego podemos agregar la lógica para validar.")
+def check_solution(board):
+    # Filas
+    for r in range(9):
+        if set(board[r,:]) != set(range(1,10)):
+            return False
+    # Columnas
+    for c in range(9):
+        if set(board[:,c]) != set(range(1,10)):
+            return False
+    # Bloques 3x3
+    for r in range(0,9,3):
+        for c in range(0,9,3):
+            block = board[r:r+3, c:c+3].flatten()
+            if set(block) != set(range(1,10)):
+                return False
+    return True
+
+if st.button("✅ Verificar solución"):
+    if check_solution(user_board):
+        st.success("🎉 ¡Correcto! Sudoku resuelto")
+    else:
+        st.error("❌ Todavía hay errores o casillas incompletas")
