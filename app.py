@@ -1,79 +1,92 @@
 import streamlit as st
-import numpy as np
 import random
 
 st.set_page_config(page_title="Sudokus para Rocio", layout="centered")
 st.title("🧩 Sudokus para Rocio")
 
-# ====== GENERADOR PROPIO DE SUDOKUS ======
-def is_valid(board, row, col, num):
-    # Verifica si num puede ir en (row, col)
-    for i in range(9):
-        if board[row][i] == num or board[i][col] == num:
-            return False
-    start_row, start_col = 3 * (row // 3), 3 * (col // 3)
-    for i in range(start_row, start_row + 3):
-        for j in range(start_col, start_col + 3):
-            if board[i][j] == num:
-                return False
-    return True
+# === FUNCIONES ===
+def generate_sudoku():
+    """Genera un sudoku válido y quita algunos números para dejar casillas vacías."""
+    base  = 3
+    side  = base * base
 
-def solve(board):
-    # Backtracking para resolver sudoku
-    for row in range(9):
-        for col in range(9):
-            if board[row][col] == 0:
-                for num in range(1, 10):
-                    if is_valid(board, row, col, num):
-                        board[row][col] = num
-                        if solve(board):
-                            return True
-                        board[row][col] = 0
-                return False
-    return True
+    # patron para un sudoku válido
+    def pattern(r, c): return (base*(r % base)+r//base+c) % side
+    # mezclar filas, columnas y números
+    def shuffle(s): return random.sample(s, len(s)) 
+    rBase = range(base) 
+    rows  = [g*base + r for g in shuffle(rBase) for r in shuffle(rBase)] 
+    cols  = [g*base + c for g in shuffle(rBase) for c in shuffle(rBase)]
+    nums  = shuffle(range(1, side+1))
 
-def generate_sudoku(empty_cells=40):
-    # Crea un sudoku válido y borra celdas
-    board = np.zeros((9,9), dtype=int)
-    solve(board)  # llena un sudoku completo
-    # borrar celdas aleatoriamente
-    cells = list(range(81))
-    random.shuffle(cells)
-    for i in range(empty_cells):
-        row, col = divmod(cells[i], 9)
-        board[row][col] = 0
+    # generar el tablero completo
+    board = [[nums[pattern(r, c)] for c in cols] for r in rows]
+
+    # quitar casillas
+    squares = side*side
+    empties = random.randint(40, 55)  # dificultad (más alto = más difícil)
+    for p in random.sample(range(squares), empties):
+        board[p//side][p % side] = 0
     return board
 
-# ====== INTERFAZ STREAMLIT ======
-if "puzzle" not in st.session_state:
-    st.session_state.puzzle = generate_sudoku()
-    st.session_state.solution = None
+def check_solution(board, solution):
+    """Verifica si la solución del usuario es válida."""
+    size = 9
+    for r in range(size):
+        row_nums = set()
+        col_nums = set()
+        for c in range(size):
+            val_row = solution[r][c]
+            val_col = solution[c][r]
+            if val_row < 1 or val_row > 9 or val_col < 1 or val_col > 9:
+                return False
+            if val_row in row_nums or val_col in col_nums:
+                return False
+            row_nums.add(val_row)
+            col_nums.add(val_col)
+    # verificar subcuadrículas
+    for br in range(0, 9, 3):
+        for bc in range(0, 9, 3):
+            seen = set()
+            for r in range(3):
+                for c in range(3):
+                    val = solution[br+r][bc+c]
+                    if val in seen:
+                        return False
+                    seen.add(val)
+    return True
 
-col1, col2 = st.columns([3,1])
+# === ESTADO ===
+if "board" not in st.session_state:
+    st.session_state.board = generate_sudoku()
 
-with col1:
-    st.subheader("Sudoku actual")
-    user_input = np.zeros((9,9), dtype=int)
-    for i in range(9):
-        cols = st.columns(9)
-        for j in range(9):
-            if st.session_state.puzzle[i][j] != 0:
-                cols[j].write(f"**{st.session_state.puzzle[i][j]}**")
-                user_input[i][j] = st.session_state.puzzle[i][j]
-            else:
-                val = cols[j].number_input("", min_value=0, max_value=9, step=1, key=f"cell_{i}_{j}")
-                user_input[i][j] = val
+# === BOTONES ===
+col1, col2 = st.columns(2)
+if col1.button("🎲 Generar uno nuevo"):
+    st.session_state.board = generate_sudoku()
 
-with col2:
-    if st.button("🔄 Nuevo Sudoku"):
-        st.session_state.puzzle = generate_sudoku()
-        st.rerun()
+# === TABLERO ===
+st.write("Completa el Sudoku 👇")
 
-    if st.button("✅ Verificar solución"):
-        puzzle_copy = st.session_state.puzzle.copy()
-        solve(puzzle_copy)
-        if np.array_equal(user_input, puzzle_copy):
-            st.success("🎉 ¡Correcto! Sudoku resuelto")
+user_solution = []
+for i in range(9):
+    cols = st.columns(9)
+    row = []
+    for j in range(9):
+        val = st.session_state.board[i][j]
+        if val != 0:
+            cols[j].text_input("", value=str(val), disabled=True, key=f"fixed-{i}-{j}")
+            row.append(val)
         else:
-            st.error("❌ Aún no está correcto")
+            num = cols[j].text_input("", value="", max_chars=1, key=f"user-{i}-{j}")
+            try:
+                row.append(int(num)) if num.isdigit() else row.append(0)
+            except:
+                row.append(0)
+    user_solution.append(row)
 
+if col2.button("✅ Verificar solución"):
+    if check_solution(st.session_state.board, user_solution):
+        st.success("🎉 ¡Correcto! Sudoku resuelto.")
+    else:
+        st.error("❌ La solución no es válida todavía.")
