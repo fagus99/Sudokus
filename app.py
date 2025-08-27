@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
-from sudoku import Sudoku
+from sudoku_generator import SudokuGenerator
 
 # ==============================
 # Configuración inicial
@@ -12,9 +12,8 @@ st.title("🎲 Sudokus para Rocio")
 st.markdown("Elige la **dificultad** y el **tipo de Sudoku** para jugar. Cada vez que entres, se generará uno nuevo 🎉")
 
 # ==============================
-# Base de sudokus precargados
+# Base de sudokus precargados para otros tipos
 # ==============================
-# Representamos los tableros como strings (0 = celda vacía)
 precargados = {
     "X": [
         {
@@ -35,7 +34,6 @@ precargados = {
         }
     ]
 }
-# Aquí podrías cargar más (hasta 50 por tipo) desde un JSON o CSV
 
 # ==============================
 # Selección de dificultad y tipo
@@ -47,12 +45,15 @@ tipo = st.selectbox("Elige tipo de Sudoku", ["clásico", "X", "Irregular", "Kill
 # Obtener tablero según tipo
 # ==============================
 if tipo == "clásico":
+    # Usamos sudoku-generator para generar infinitos
     if dificultad == "medio/alto":
-        puzzle = Sudoku(3).difficulty(0.5)   # nivel medio-alto
+        removals = 40  # menos celdas vacías
     else:
-        puzzle = Sudoku(3).difficulty(0.7)   # nivel alto
-    board = puzzle.board
-    solution = puzzle.solve().board
+        removals = 55  # más celdas vacías
+
+    generator = SudokuGenerator(9, removals)  # 9x9
+    board = generator.get_board()      # con celdas vacías (None)
+    solution = generator.get_solution()  # solución completa
 else:
     elegido = random.choice(precargados[tipo])
     puzzle_str = elegido["puzzle"]
