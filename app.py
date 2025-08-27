@@ -1,111 +1,79 @@
 import streamlit as st
-import pandas as pd
+import numpy as np
 import random
-from sudoku_generator import SudokuGenerator
 
-# ==============================
-# Configuración inicial
-# ==============================
-st.set_page_config(page_title="Sudokus para Rocio", layout="wide")
-st.title("🎲 Sudokus para Rocio")
+st.set_page_config(page_title="Sudokus para Rocio", layout="centered")
+st.title("🧩 Sudokus para Rocio")
 
-st.markdown("Elige la **dificultad** y el **tipo de Sudoku** para jugar. Cada vez que entres, se generará uno nuevo 🎉")
+# ====== GENERADOR PROPIO DE SUDOKUS ======
+def is_valid(board, row, col, num):
+    # Verifica si num puede ir en (row, col)
+    for i in range(9):
+        if board[row][i] == num or board[i][col] == num:
+            return False
+    start_row, start_col = 3 * (row // 3), 3 * (col // 3)
+    for i in range(start_row, start_row + 3):
+        for j in range(start_col, start_col + 3):
+            if board[i][j] == num:
+                return False
+    return True
 
-# ==============================
-# Base de sudokus precargados para otros tipos
-# ==============================
-precargados = {
-    "X": [
-        {
-            "puzzle": "400000805030000000000700000020000060000080400000010000000603070500200000104000000",
-            "solution": "419652837837149652265738941521974368673581429948213765192865374586327194374496218"
-        }
-    ],
-    "Irregular": [
-        {
-            "puzzle": "009000000080605020501078000000040706000000000104060000000720805090501030000000600",
-            "solution": "349152687287645139561978342635894726972316458814263975126739854498521763753486291"
-        }
-    ],
-    "Killer": [
-        {
-            "puzzle": "300200000000107000706030500070009080900020004010800050009040301000702000000008006",
-            "solution": "345286179892157463716934528574369182968521734123874659659418327481762395237695841"
-        }
-    ]
-}
+def solve(board):
+    # Backtracking para resolver sudoku
+    for row in range(9):
+        for col in range(9):
+            if board[row][col] == 0:
+                for num in range(1, 10):
+                    if is_valid(board, row, col, num):
+                        board[row][col] = num
+                        if solve(board):
+                            return True
+                        board[row][col] = 0
+                return False
+    return True
 
-# ==============================
-# Selección de dificultad y tipo
-# ==============================
-dificultad = st.selectbox("Elige dificultad", ["medio/alto", "alto"])
-tipo = st.selectbox("Elige tipo de Sudoku", ["clásico", "X", "Irregular", "Killer"])
+def generate_sudoku(empty_cells=40):
+    # Crea un sudoku válido y borra celdas
+    board = np.zeros((9,9), dtype=int)
+    solve(board)  # llena un sudoku completo
+    # borrar celdas aleatoriamente
+    cells = list(range(81))
+    random.shuffle(cells)
+    for i in range(empty_cells):
+        row, col = divmod(cells[i], 9)
+        board[row][col] = 0
+    return board
 
-# ==============================
-# Obtener tablero según tipo
-# ==============================
-if tipo == "clásico":
-    # Usamos sudoku-generator para generar infinitos
-    if dificultad == "medio/alto":
-        removals = 40  # menos celdas vacías
-    else:
-        removals = 55  # más celdas vacías
+# ====== INTERFAZ STREAMLIT ======
+if "puzzle" not in st.session_state:
+    st.session_state.puzzle = generate_sudoku()
+    st.session_state.solution = None
 
-    generator = SudokuGenerator(9, removals)  # 9x9
-    board = generator.get_board()      # con celdas vacías (None)
-    solution = generator.get_solution()  # solución completa
-else:
-    elegido = random.choice(precargados[tipo])
-    puzzle_str = elegido["puzzle"]
-    sol_str = elegido["solution"]
+col1, col2 = st.columns([3,1])
 
-    # convertir a listas 9x9
-    board = [
-        [int(puzzle_str[r*9 + c]) if puzzle_str[r*9 + c] != "0" else None for c in range(9)]
-        for r in range(9)
-    ]
-    solution = [
-        [int(sol_str[r*9 + c]) for c in range(9)]
-        for r in range(9)
-    ]
-
-# ==============================
-# Mostrar grilla interactiva
-# ==============================
-st.write(f"### Sudoku {tipo} - dificultad {dificultad}")
-
-with st.form("sudoku_form"):
-    user_grid = []
-    for r in range(9):
+with col1:
+    st.subheader("Sudoku actual")
+    user_input = np.zeros((9,9), dtype=int)
+    for i in range(9):
         cols = st.columns(9)
-        row = []
-        for c in range(9):
-            val = board[r][c]
-            if val is None:  # celda vacía → input
-                cell_value = cols[c].text_input(
-                    "",
-                    key=f"cell_{r}_{c}",
-                    max_chars=1,
-                    value=""
-                )
-                row.append(int(cell_value) if cell_value.isdigit() else None)
-            else:  # celda fija
-                cols[c].markdown(f"**{val}**")
-                row.append(val)
-        user_grid.append(row)
+        for j in range(9):
+            if st.session_state.puzzle[i][j] != 0:
+                cols[j].write(f"**{st.session_state.puzzle[i][j]}**")
+                user_input[i][j] = st.session_state.puzzle[i][j]
+            else:
+                val = cols[j].number_input("", min_value=0, max_value=9, step=1, key=f"cell_{i}_{j}")
+                user_input[i][j] = val
 
-    submitted = st.form_submit_button("✅ Verificar Sudoku")
+with col2:
+    if st.button("🔄 Nuevo Sudoku"):
+        st.session_state.puzzle = generate_sudoku()
+        st.rerun()
 
-# ==============================
-# Verificación
-# ==============================
-if submitted:
-    if user_grid == solution:
-        st.success("🎉 ¡Felicitaciones Rocio! Sudoku resuelto correctamente ✅")
-    else:
-        st.error("❌ Aún hay errores o celdas incompletas. Seguí intentando 😉")
+    if st.button("✅ Verificar solución"):
+        puzzle_copy = st.session_state.puzzle.copy()
+        solve(puzzle_copy)
+        if np.array_equal(user_input, puzzle_copy):
+            st.success("🎉 ¡Correcto! Sudoku resuelto")
+        else:
+            st.error("❌ Aún no está correcto")
 
-if st.button("📌 Mostrar solución"):
-    sol_df = pd.DataFrame(solution)
-    st.write("✅ Aquí está la solución completa:")
-    st.dataframe(sol_df, height=400)
