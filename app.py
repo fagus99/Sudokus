@@ -1,81 +1,204 @@
 import streamlit as st
-import numpy as np
 import random
-import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Sudokus para Rocio", layout="centered")
-st.title("🧩 Sudokus para Rocio")
+# --- Lógica del Sudoku ---
 
-# ========================
-# Generador de Sudoku 9x9
-# ========================
-def pattern(r, c): return (3*(r % 3) + r//3 + c) % 9
-def shuffled(s): return random.sample(s, len(s))
-
-def generate_sudoku():
-    rBase = range(3)
-    rows = [g*3 + r for g in shuffled(rBase) for r in shuffled(rBase)]
-    cols = [g*3 + c for g in shuffled(rBase) for c in shuffled(rBase)]
-    nums = shuffled(list(range(1,10)))
-    board = [[nums[pattern(r,c)] for c in cols] for r in rows]
-    empties = random.randint(40,55)
-    for p in random.sample(range(81), empties):
-        board[p//9][p%9] = 0
-    return np.array(board)
-
-# ========================
-# Estado del Sudoku
-# ========================
-if "board" not in st.session_state:
-    st.session_state.board = generate_sudoku()
-
-if st.button("🎲 Generar uno nuevo"):
-    st.session_state.board = generate_sudoku()
-
-board = st.session_state.board
-
-# ========================
-# Render HTML tablero 9x9 con cuadrantes
-# ========================
-def render_sudoku_html(board):
-    style = """
-    <style>
-    table.sudoku {border-collapse: collapse; margin: auto;}
-    table.sudoku td {
-        width: 50px; height: 50px; text-align:center; font-size:20px; padding:0;
-        border:1px solid #999;
-    }
-    /* Bordes gruesos para cuadrantes 3x3 */
-    table.sudoku tr:nth-child(3n) td {border-bottom:3px solid black;}
-    table.sudoku td:nth-child(3n) {border-right:3px solid black;}
-    table.sudoku tr:first-child td {border-top:3px solid black;}
-    table.sudoku td:first-child {border-left:3px solid black;}
-    .fixed {background-color:#ddd; font-weight:bold;}
-    input.sudoku-cell {width:100%; height:100%; text-align:center; border:none; font-size:20px;}
-    input.sudoku-cell:focus {outline:2px solid #4a90e2; background-color:#e8f0fe;}
-    </style>
+def solve_sudoku(board):
     """
+    Resuelve el Sudoku usando un algoritmo de backtracking.
+    """
+    find = find_empty(board)
+    if not find:
+        return True
+    else:
+        row, col = find
 
-    table = "<table class='sudoku'>"
-    for i in range(9):
-        table += "<tr>"
-        for j in range(9):
-            val = board[i,j]
-            if val != 0:
-                table += f"<td class='fixed'>{val}</td>"
-            else:
-                table += f"<td><input class='sudoku-cell' maxlength='1' id='cell-{i}-{j}'></td>"
-        table += "</tr>"
-    table += "</table>"
-    return style + table
+    for i in range(1, 10):
+        if is_valid(board, i, (row, col)):
+            board[row][col] = i
 
-components.html(render_sudoku_html(board), height=480)
+            if solve_sudoku(board):
+                return True
 
-# ========================
-# Captura los inputs con st.session_state
-# ========================
-st.write("💡 Las casillas grises son fijas, blancas son para completar.")
+            board[row][col] = 0
+    return False
 
-# Lógica para capturar y validar inputs:
-# Cada input tiene key='cell-i-j', podemos usar st.session_state si usamos st.text_input en lugar de html,
-# pero por visual se mantiene el tablero clásico. La validación se hace con un formulario opcional.
+def is_valid(board, num, pos):
+    """
+    Verifica si un número es válido en una posición dada.
+    """
+    # Chequeo de la fila
+    for i in range(len(board[0])):
+        if board[pos[0]][i] == num and pos[1] != i:
+            return False
+
+    # Chequeo de la columna
+    for i in range(len(board)):
+        if board[i][pos[1]] == num and pos[0] != i:
+            return False
+
+    # Chequeo del cuadrado 3x3
+    box_x = pos[1] // 3
+    box_y = pos[0] // 3
+
+    for i in range(box_y * 3, box_y * 3 + 3):
+        for j in range(box_x * 3, box_x * 3 + 3):
+            if board[i][j] == num and (i, j) != pos:
+                return False
+
+    return True
+
+def find_empty(board):
+    """
+    Encuentra la siguiente celda vacía (con valor 0).
+    """
+    for i in range(len(board)):
+        for j in range(len(board[0])):
+            if board[i][j] == 0:
+                return (i, j)
+    return None
+
+def generate_full_board():
+    """
+    Genera un tablero de Sudoku 9x9 resuelto.
+    """
+    board = [[0] * 9 for _ in range(9)]
+    fill_board_recursively(board)
+    return board
+
+def fill_board_recursively(board):
+    """
+    Función auxiliar para rellenar un tablero completo de forma aleatoria.
+    """
+    for i in range(81):
+        row = i // 9
+        col = i % 9
+        if board[row][col] == 0:
+            numbers = list(range(1, 10))
+            random.shuffle(numbers)
+            for number in numbers:
+                if is_valid(board, number, (row, col)):
+                    board[row][col] = number
+                    if find_empty(board) is None or fill_board_recursively(board):
+                        return True
+                    board[row][col] = 0
+            return False
+    return True
+
+def generate_sudoku_puzzle(difficulty='difficult'):
+    """
+    Genera un puzzle de Sudoku eliminando números del tablero resuelto.
+    La dificultad "difícil" elimina una gran cantidad de números.
+    """
+    board = generate_full_board()
+    solution = [row[:] for row in board]  # Guardar una copia de la solución
+    
+    # Número de celdas a eliminar para la dificultad "difícil" (aprox. 55 a 65)
+    num_to_remove = random.randint(55, 65)
+    
+    while num_to_remove > 0:
+        row, col = random.randint(0, 8), random.randint(0, 8)
+        if board[row][col] != 0:
+            backup = board[row][col]
+            board[row][col] = 0
+            
+            # Verificar si el puzzle sigue teniendo una solución única
+            # (Simplificado para esta implementación. Una verificación más robusta
+            # requeriría resolver el puzzle y contar el número de soluciones).
+            
+            num_to_remove -= 1
+            
+    return board, solution
+
+# --- Funciones de la App de Streamlit ---
+
+def generate_new_sudoku():
+    """Genera un nuevo Sudoku y lo guarda en el estado de la sesión."""
+    puzzle, solution = generate_sudoku_puzzle(difficulty='difficult')
+    st.session_state.puzzle = puzzle
+    st.session_state.solution = solution
+    st.session_state.user_board = [row[:] for row in puzzle]
+    st.session_state.message = ""
+
+def check_solution():
+    """Comprueba la solución del usuario y actualiza el mensaje."""
+    is_correct = True
+    user_solution = st.session_state.user_board
+    
+    # Revisa si todas las celdas están llenas y coinciden con la solución
+    for r in range(9):
+        for c in range(9):
+            if user_solution[r][c] != st.session_state.solution[r][c]:
+                is_correct = False
+                break
+        if not is_correct:
+            break
+            
+    if is_correct:
+        st.session_state.message = "🎉 ¡Felicitaciones! ¡Solución correcta!"
+    else:
+        st.session_state.message = "❌ Solución incorrecta. ¡Sigue intentándolo!"
+
+# --- Interfaz de la App ---
+
+st.set_page_config(page_title="Sudokus para Rocío", layout="wide")
+
+st.title("Sudokus para Rocío")
+st.markdown("¡Un nuevo desafío de Sudoku difícil te espera!")
+
+# Inicializar el estado de la sesión si es la primera vez que se carga la app
+if "puzzle" not in st.session_state:
+    generate_new_sudoku()
+
+# Mostrar el tablero
+st.write("### Tablero de Sudoku")
+grid_cols = st.columns(9)
+user_board = st.session_state.user_board
+
+for r in range(9):
+    # Uso de st.columns para un diseño de cuadrícula
+    cols = st.columns(9)
+    for c in range(9):
+        with cols[c]:
+            is_initial = st.session_state.puzzle[r][c] != 0
+            value = str(st.session_state.user_board[r][c]) if st.session_state.user_board[r][c] != 0 else ""
+            
+            # Usar st.text_input para cada celda
+            # key única para cada celda para que Streamlit sepa qué actualizar
+            input_value = st.text_input(
+                label="", 
+                value=value,
+                key=f"cell_{r}_{c}",
+                disabled=is_initial,
+                max_chars=1
+            )
+            
+            # Actualizar el tablero del usuario
+            try:
+                if input_value:
+                    user_board[r][c] = int(input_value)
+                else:
+                    user_board[r][c] = 0
+            except ValueError:
+                # Manejar entrada no numérica
+                user_board[r][c] = 0
+            
+# --- Botones y Mensajes ---
+
+st.write("")
+st.write("")
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("Generar Nuevo Sudoku", use_container_width=True):
+        generate_new_sudoku()
+        st.experimental_rerun()  # Forzar un nuevo renderizado para ver el tablero vacío
+
+with col2:
+    if st.button("Verificar Solución", use_container_width=True):
+        check_solution()
+
+# Mostrar el mensaje de verificación
+st.write("")
+if st.session_state.get("message"):
+    st.success(st.session_state.message) if "Felicitaciones" in st.session_state.message else st.error(st.session_state.message)
